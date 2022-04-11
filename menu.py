@@ -284,7 +284,6 @@ class Menu:
             case _:
                 return {"error_info": "undefined type of return"}
 
-
     def export(self):
         menu_dict = {}
         menu_dict["title"] = self.title

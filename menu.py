@@ -77,7 +77,7 @@ class Menu:
             error_info = "argument 'menu_instance' must be an instance of " \
                        + "'Menu' or NoneType"
             return {"error_info": error_info}
-        if menu_name.strip() == "":
+        if menu_name is None or menu_name.strip() == 0:
             menu_name = "untitled"
         menu_instance.rename(menu_name)
         if index is None:
@@ -183,7 +183,9 @@ class Menu:
             structure.append((locator, instance))
             temp = []
             for _index, _instance in enumerate(instance.sub_menus):
-                _locator = tuple(list(locator).append(_index))
+                _temp = list(locator)
+                _temp.append(_index)
+                _locator = tuple(_temp)
                 temp.append((_locator, _instance))
             temp.reverse()
             stack.extend(temp)
@@ -233,7 +235,7 @@ class Menu:
         less than or equal to 0, value of 'tree_indent' will be determined by
         property 'self.tree_indent'.
         """
-        if tree_indent <= 0:
+        if tree_indent is None or tree_indent <= 0:
             tree_indent = self.tree_indent
         stems = [
             "│" + " " * (tree_indent - 1), " " + " " * (tree_indent - 1),

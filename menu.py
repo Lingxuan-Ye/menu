@@ -1,7 +1,3 @@
-"""
-Version Dependency: python 3.10 or later.
-"""
-
 import json
 from copy import deepcopy
 from functools import wraps

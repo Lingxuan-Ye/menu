@@ -30,10 +30,10 @@ def _raise(func):
 class Menu:
 
     @type_check
-    def __init__(self, menu_name: str = "untitled"):
-        if menu_name.strip() == "":
-            menu_name = "untitled"
-        self.__title = menu_name
+    def __init__(self, title: str = "untitled"):
+        if title.strip() == "":
+            title = "untitled"
+        self.__title = title
         self.__sub_menus = []
         self.__attributes = {}
         self.__tree_indent = 4
@@ -43,10 +43,10 @@ class Menu:
         return self.__title
 
     @type_check
-    def rename(self, menu_name: str = "untitled"):
-        if menu_name.strip() == "":
-            menu_name = "untitled"
-        self.__title = menu_name
+    def rename(self, title: str = "untitled"):
+        if title.strip() == "":
+            title = "untitled"
+        self.__title = title
 
     @property
     def sub_menus(self):
@@ -65,11 +65,8 @@ class Menu:
     def add_sub_menu(self,
                      *,
                      menu_instance=None,
-                     menu_name: Union[str, NoneType] = None,
+                     title: Union[str, NoneType] = None,
                      index: Union[int, NoneType] = None):
-        """
-        This method will return newly-instantiated submenu for further editing.
-        """
         if menu_instance is None:
             menu_instance = type(self)("untitled")
             # 'type(self)' differs from 'Menu' in derived class
@@ -77,9 +74,9 @@ class Menu:
             error_info = "argument 'menu_instance' must be an instance of " \
                        + "'Menu' or NoneType"
             return {"error_info": error_info}
-        if menu_name is None or menu_name.strip() == 0:
-            menu_name = "untitled"
-        menu_instance.rename(menu_name)
+        if title is None or title.strip() == 0:
+            title = "untitled"
+        menu_instance.rename(title)
         if index is None:
             self.__sub_menus.append(menu_instance)
         else:
@@ -125,33 +122,48 @@ class Menu:
             self.__attributes.clear()
             return
         if not args:
-            error_info = "del_attributes() requires at least one argument"
+            error_info = "del_attributes() requires at least one argument " \
+                       + "besides argument 'delete_all'"
             return {"error_info": error_info}
         element_type_check(args, str, "arg")
         for key in args:
             self.__attributes.pop(key, None)
 
+    def __get_text(self):
+        return self.__attributes.get("__text__", None)
+
     @type_check
-    def set_text(self, content: str):
+    def __set_text(self, content: str):
         self.add_attributes(__text__=content)
 
-    def del_text(self):
+    def __del_text(self):
         self.del_attributes("__text__")
 
+    text = property(fget=__get_text,
+                    fset=__set_text,
+                    fdel=__del_text)
+
+    def __get_comment(self):
+        return self.__attributes.get("__comment__", None)
+
     @type_check
-    def set_comment(self, content: str):
+    def __set_comment(self, content: str):
         self.add_attributes(__comment__=content)
 
-    def del_comment(self):
+    def __del_comment(self):
         self.del_attributes("__comment__")
+
+    comment = property(fget=__get_comment,
+                       fset=__set_comment,
+                       fdel=__del_comment)
 
     @classmethod
     @type_check
-    def instantiate_from_dict(cls, sub_menu_dict: dict):
-        menu_name: str = sub_menu_dict["title"]
-        sub_menus: list = sub_menu_dict["sub_menus"]
-        attributes: dict = sub_menu_dict["attributes"]
-        debug(menu_name, str, 'menu_dict["title"]')
+    def instantiate_from_dict(cls, menu_dict: dict):
+        title: str = menu_dict["title"]
+        sub_menus: list = menu_dict["sub_menus"]
+        attributes: dict = menu_dict["attributes"]
+        debug(title, str, 'menu_dict["title"]')
         debug(sub_menus, list, 'menu_dict["sub_menus"]')
         debug(attributes, dict, 'menu_dict["attributes"]')
         if sub_menus:
@@ -162,12 +174,12 @@ class Menu:
             element_type_check(attributes.values(),
                                (int, float, str, bool, list, dict, NoneType),
                                'menu_dict["attributes"].values()')
-        if menu_name.strip() == "":
-            menu_name = "untitled"
-        menu_instance = cls(menu_name)
-        for sub_menu_dict in sub_menus:
-            sub_menu_instance = cls.instantiate_from_dict(sub_menu_dict)
-            menu_instance.add_existing_submenu(sub_menu_instance)
+        if title.strip() == "":
+            title = "untitled"
+        menu_instance = cls(title)
+        for _menu_dict in sub_menus:
+            _menu_instance = cls.instantiate_from_dict(_menu_dict)
+            menu_instance.add_sub_menu(_menu_instance)
         menu_instance.__attributes.update(attributes)
         return menu_instance
 
@@ -176,22 +188,22 @@ class Menu:
     def get_structure(self, *, type_of_return: str = "generator"):
         structure = []
         locator = ()
-        instance = self
-        stack = [(locator, instance)]
+        menu_instance = self
+        stack = [(locator, menu_instance)]
         while stack:
-            locator, instance = stack.pop()
-            structure.append((locator, instance))
+            locator, menu_instance = stack.pop()
+            structure.append((locator, menu_instance))
             temp = []
-            for _index, _instance in enumerate(instance.sub_menus):
+            for _index, _menu_instance in enumerate(menu_instance.sub_menus):
                 _temp = list(locator)
                 _temp.append(_index)
                 _locator = tuple(_temp)
-                temp.append((_locator, _instance))
+                temp.append((_locator, _menu_instance))
             temp.reverse()
             stack.extend(temp)
             del temp
-        structure_printable = ((locator, instance.title)
-                               for locator, instance in structure)
+        structure_printable = ((locator, menu_instance.title)
+                               for locator, menu_instance in structure)
         match type_of_return.lower():
             case "g"|"generator":
                 return structure_printable
@@ -212,11 +224,11 @@ class Menu:
 
     @_raise
     @type_check
-    def __set_tree_indent(self, indent: int):
-        if indent <= 0:
-            error_info = "argument 'indent' must be greater than 0"
+    def __set_tree_indent(self, tree_indent: int):
+        if tree_indent <= 0:
+            error_info = "argument 'tree_indent' must be greater than 0"
             return {"error_info": error_info}
-        self.__tree_indent = indent
+        self.__tree_indent = tree_indent
 
     def __del_tree_indent(self):
         del self.__tree_indent
@@ -286,8 +298,8 @@ class Menu:
         menu_dict = {}
         menu_dict["title"] = self.title
         menu_dict["sub_menus"] = []
-        for instance in self.__sub_menus:
-            sub_menu_dict = instance.export()
+        for _menu_instance in self.__sub_menus:
+            sub_menu_dict = _menu_instance.export()
             menu_dict["sub_menus"].append(sub_menu_dict)
         menu_dict["attributes"] = deepcopy(self.__attributes)
         return menu_dict
@@ -319,5 +331,5 @@ class Menu:
             path += ".json"
         with open(path, "r") as f:
             menu_dict = json.load(f)
-            menu = cls.instantiate_from_dict(menu_dict)
-        return menu
+            menu_instance = cls.instantiate_from_dict(menu_dict)
+        return menu_instance

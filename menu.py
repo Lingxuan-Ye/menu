@@ -165,9 +165,9 @@ class Menu:
         title: str = menu_dict["title"]
         attributes: dict = menu_dict["attributes"]
         sub_menus: list = menu_dict["sub_menus"]
-        debug(title, str, 'menu_dict["title"]')
-        debug(attributes, dict, 'menu_dict["attributes"]')
-        debug(sub_menus, list, 'menu_dict["sub_menus"]')
+        type_debug(title, str, 'menu_dict["title"]')
+        type_debug(attributes, dict, 'menu_dict["attributes"]')
+        type_debug(sub_menus, list, 'menu_dict["sub_menus"]')
         if attributes:
             element_type_check(attributes.keys(), str,
                                'menu_dict["attributes"].keys()')

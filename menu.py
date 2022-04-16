@@ -197,9 +197,7 @@ class Menu:
             structure.append((locator, menu_instance))
             temp = []
             for _index, _menu_instance in enumerate(menu_instance.sub_menus):
-                _temp = list(locator)
-                _temp.append(_index)
-                _locator = tuple(_temp)
+                _locator = (*locator, _index)
                 temp.append((_locator, _menu_instance))
             temp.reverse()
             stack.extend(temp)

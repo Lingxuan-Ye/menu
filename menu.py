@@ -16,7 +16,7 @@ class Error(Exception):
     pass
 
 
-class ErrorInfo(NamedTuple):
+class ErrorDetail(NamedTuple):
     content: str
     action: str = "raise"
 
@@ -26,7 +26,7 @@ def _exception(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         result = func(*args, **kwargs)
-        if not isinstance(result, ErrorInfo):
+        if not isinstance(result, ErrorDetail):
             return result
         else:
             content = result.content
@@ -84,8 +84,8 @@ class Menu:
     @_exception
     def add_attributes(self, **kwargs):
         if not kwargs:
-            error = "add_attributes() requires at least one argument"
-            return ErrorInfo(error)
+            error_info = "add_attributes() requires at least one argument"
+            return ErrorDetail(error_info)
         element_type_check(
             kwargs.values(),
             Union[int, float, str, bool, list, dict, NoneType],
@@ -96,8 +96,8 @@ class Menu:
     @_exception
     def del_attributes(self, *args):
         if not args:
-            error = "del_attributes() requires at least one argument "
-            return ErrorInfo(error)
+            error_info = "del_attributes() requires at least one argument"
+            return ErrorDetail(error_info)
         element_type_check(args, str, "args")
         for key in args:
             self.__attributes.pop(key, None)
@@ -151,9 +151,9 @@ class Menu:
             menu_instance = type(self)("untitled")
             # 'type(self)' differs from 'Menu' in derived class
         elif not isinstance(menu_instance, type(self)):
-            error = "argument 'menu_instance' must be an instance of " \
-                  + "'Menu' or NoneType"
-            return ErrorInfo(error)
+            error_info = "argument 'menu_instance' must be an instance of " \
+                       + "'Menu' or NoneType"
+            return ErrorDetail(error_info)
         else:
             menu_instance = deepcopy(menu_instance)
         if title is not None:
@@ -239,7 +239,7 @@ class Menu:
                     result[line_attr[0]] = (index, line_attr[1])
                 return result
             case _:
-                return ErrorInfo("undefined type of return")
+                return ErrorDetail("undefined type of return")
 
     def __get_tree_indent(self):
         return self.__tree_indent
@@ -248,8 +248,8 @@ class Menu:
     @type_check
     def __set_tree_indent(self, tree_indent: int):
         if tree_indent <= 0:
-            error = "argument 'tree_indent' must be greater than 0"
-            return ErrorInfo(error)
+            error_info = "argument 'tree_indent' must be greater than 0"
+            return ErrorDetail(error_info)
         self.__tree_indent = tree_indent
 
     def __del_tree_indent(self):
@@ -314,7 +314,7 @@ class Menu:
             case "l"|"list":
                 return list(lines)
             case _:
-                return ErrorInfo("undefined type of return")
+                return ErrorDetail("undefined type of return")
 
     def export(self) -> dict:
         menu_dict: dict = {}

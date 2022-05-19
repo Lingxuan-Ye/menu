@@ -1,11 +1,12 @@
 import json
 import logging
+from collections import deque
 from copy import deepcopy
 from functools import wraps
 from types import NoneType
 from typing import NamedTuple, Optional, Sequence, Union
 
-from type_check import *
+from type_check import element_type_check, type_check, type_debug
 
 __all__ = ["Menu"]
 
@@ -16,8 +17,8 @@ class Error(Exception):
     pass
 
 
-class ErrorDetail(NamedTuple):
-    content: str
+class ErrorInfo(NamedTuple):
+    message: str
     action: str = "raise"
 
 
@@ -26,16 +27,16 @@ def _exception(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         result = func(*args, **kwargs)
-        if not isinstance(result, ErrorDetail):
+        if not isinstance(result, ErrorInfo):
             return result
         else:
-            content = result.content
+            message = result.message
             action = result.action
         match action.lower():
-            case "r"|"raise"|"raising":
-                raise Error(content)
-            case "l"|"log"|"logging":
-                logging.error(content)
+            case "r" | "raise" | "raising":
+                raise Error(message)
+            case "l" | "log" | "logging":
+                logging.error(message)
             case _:
                 raise Error("undefined action")
 
@@ -45,20 +46,20 @@ def _exception(func):
 class Menu:
 
     @type_check
-    def __init__(self, title: str = "untitled"):
-        if title.strip() == "":
+    def __init__(self, title: Optional[str] = None):
+        if title is None or title.strip() == "":
             title = "untitled"
         self.__title: str = title
         self.__attributes: dict = {}
-        self.__sub_menus: list = []
+        self.__sub_menus: deque = deque()
         self.__tree_indent: int = 4
 
     def __get_title(self):
         return self.__title
 
     @type_check
-    def __set_title(self, title: str):
-        if title.strip() == "":
+    def __set_title(self, title: Optional[str] = None):
+        if title is None or title.strip() == "":
             title = "untitled"
         self.__title = title
 
@@ -67,11 +68,11 @@ class Menu:
 
     title = property(fget=__get_title, fset=__set_title, fdel=__del_title)
 
-    @property
-    def attributes(self):
+    def __get_attributes(self):
         return self.__attributes
 
-    def set_attributes(self, **kwargs):
+    @type_check
+    def __set_attributes(self, kwargs: dict):
         if kwargs:
             element_type_check(
                 kwargs.values(),
@@ -81,11 +82,20 @@ class Menu:
         self.__attributes.clear()
         self.__attributes.update(kwargs)
 
+    def __del_attributes(self):
+        self.__attributes.clear()
+
+    attributes = property(
+        fget=__get_attributes,
+        fset=__set_attributes,
+        fdel=__del_attributes
+    )
+
     @_exception
     def add_attributes(self, **kwargs):
         if not kwargs:
-            error_info = "add_attributes() requires at least one argument"
-            return ErrorDetail(error_info)
+            message = "add_attributes() requires at least one argument"
+            return ErrorInfo(message)
         element_type_check(
             kwargs.values(),
             Union[int, float, str, bool, list, dict, NoneType],
@@ -96,8 +106,8 @@ class Menu:
     @_exception
     def del_attributes(self, *args):
         if not args:
-            error_info = "del_attributes() requires at least one argument"
-            return ErrorDetail(error_info)
+            message = "del_attributes() requires at least one argument"
+            return ErrorInfo(message)
         element_type_check(args, str, "args")
         for key in args:
             self.__attributes.pop(key, None)
@@ -124,9 +134,11 @@ class Menu:
     def __del_comment(self):
         self.del_attributes("__comment__")
 
-    comment = property(fget=__get_comment,
-                       fset=__set_comment,
-                       fdel=__del_comment)
+    comment = property(
+        fget=__get_comment,
+        fset=__set_comment,
+        fdel=__del_comment
+    )
 
     @property
     def sub_menus(self):
@@ -143,19 +155,23 @@ class Menu:
 
     @_exception
     @type_check
-    def add_sub_menu(self, *,
-                     menu_instance=None,
-                     title: Optional[str] = None,
-                     index: Optional[int] = None):
+    def add_sub_menu(
+        self,
+        title: Optional[str] = None, *,
+        menu_instance = None,
+        index: Optional[int] = None,
+        add_deepcopy: bool = True
+    ):
         if menu_instance is None:
-            menu_instance = type(self)("untitled")
+            menu_instance = type(self)()
             # 'type(self)' differs from 'Menu' in derived class
         elif not isinstance(menu_instance, type(self)):
-            error_info = "argument 'menu_instance' must be an instance of " \
-                       + "'Menu' or NoneType"
-            return ErrorDetail(error_info)
-        else:
+            message = "argument 'menu_instance' must be an instance of " \
+                    + "'Menu' or NoneType"
+            return ErrorInfo(message)
+        elif add_deepcopy:
             menu_instance = deepcopy(menu_instance)
+
         if title is not None:
             if title.strip() == "":
                 title = "untitled"
@@ -210,36 +226,49 @@ class Menu:
 
     @_exception
     @type_check
-    def get_structure(self, *, type_of_return: str = "generator"):
-        structure: list = []
-        locator: tuple = ()
-        stack: list = [(locator, self)]
-        while stack:
-            locator, menu_instance = stack.pop()
-            structure.append((locator, menu_instance))
-            temp = []
-            for _index, _menu_instance in enumerate(menu_instance.sub_menus):
-                _locator = (*locator, _index)
-                temp.append((_locator, _menu_instance))
-            temp.reverse()
-            stack.extend(temp)
-            del temp
-        structure_printable = ((locator, menu_instance.title)
-                               for locator, menu_instance in structure)
+    def get_structure(
+        self,
+        return_title: bool = True,
+        type_of_return: str = "deque"
+    ):
+        structure: deque[tuple[int, "Menu" | str]] = deque()
+        level = 0
+        deque_ = deque([(level, self)])
+        while deque_:
+            level, menu_instance = deque_.popleft()
+            if return_title:
+                structure.append((level, menu_instance.title))
+            else:
+                structure.append((level, menu_instance))
+            f = lambda menu_instance: (level + 1, menu_instance)
+            children = map(f, reversed(menu_instance.sub_menus))
+            deque_.extendleft(children)
         match type_of_return.lower():
-            case "g"|"generator":
-                return structure_printable
-            case "t"|"tuple":
-                return tuple(structure_printable)
-            case "l"|"list":
-                return list(structure_printable)
-            case "d"|"dict":
-                result = {}
-                for index, line_attr in enumerate(structure_printable):
-                    result[line_attr[0]] = (index, line_attr[1])
-                return result
+            case "d" | "deque":
+                return structure
+            case "t" | "tuple":
+                return tuple(structure)
+            case "l" | "list":
+                return list(structure)
+            case "dict":
+                cursor: list[int] = []
+                structure_dict: dict[tuple, "Menu" | str] = {}
+                for level, node in structure:
+                    if level == 0:
+                        structure_dict[()] = node
+                        latest_level = level
+                        continue
+                    if level > latest_level:
+                        cursor.append(0)
+                    else:
+                        if level < latest_level:
+                            cursor = cursor[0:level]
+                        cursor[-1] += 1
+                    structure_dict[tuple(cursor)] = node
+                    latest_level = level
+                return structure_dict
             case _:
-                return ErrorDetail("undefined type of return")
+                return ErrorInfo("undefined type of return")
 
     def __get_tree_indent(self):
         return self.__tree_indent
@@ -248,95 +277,110 @@ class Menu:
     @type_check
     def __set_tree_indent(self, tree_indent: int):
         if tree_indent <= 0:
-            error_info = "argument 'tree_indent' must be greater than 0"
-            return ErrorDetail(error_info)
+            message = "argument 'tree_indent' must be greater than 0"
+            return ErrorInfo(message)
         self.__tree_indent = tree_indent
 
     def __del_tree_indent(self):
         del self.__tree_indent
 
-    tree_indent = property(fget=__get_tree_indent,
-                           fset=__set_tree_indent,
-                           fdel=__del_tree_indent)
+    tree_indent = property(
+        fget=__get_tree_indent,
+        fset=__set_tree_indent,
+        fdel=__del_tree_indent
+    )
 
     @_exception
     @type_check
-    def tree(self, *,
-             type_of_return: str = "str",
-             tree_indent: Optional[int] = None):
+    def tree(
+        self, *,
+        type_of_return: str = "str",
+        tree_indent: Optional[int] = None
+    ):
         """
-        If argument 'tree_indent' is None, or
-        less than or equal to 0, value of 'tree_indent' will be determined by
-        property 'self.tree_indent'.
+        If argument 'tree_indent' is None, or less than or equal to 0,
+        value of 'tree_indent' will be determined by property
+        'self.tree_indent'.
+
+        This method depends on the feature that 'dict' is ordered in
+        Python 3.7 or later.
         """
         if tree_indent is None or tree_indent <= 0:
             tree_indent = self.__tree_indent
-        stems = [
-            "│" + " " * (tree_indent - 1), " " + " " * (tree_indent - 1),
-            "├" + "─" * (tree_indent - 1), "└" + "─" * (tree_indent - 1)
-        ]
+        stems = {
+            0: "│" + " " * (tree_indent - 1),
+            1: " " + " " * (tree_indent - 1),
+            2: "├" + "─" * (tree_indent - 1),
+            3: "└" + "─" * (tree_indent - 1)
+        }
         if tree_indent > 2:
             stems[2] = stems[2][0:-1] + " "
             stems[3] = stems[3][0:-1] + " "
 
-        structure_pritable: dict = self.get_structure(type_of_return="dict")
-        lines_with_index: list = []
-        for locator in structure_pritable:
-            if not locator:
-                prefix = ""
-            else:
-                prefix_list = []
-                for i, j in enumerate(locator[0:-1]):
-                    sup_dummy = (*locator[0:i], j + 1)
-                    if structure_pritable.get(sup_dummy, None) is not None:
+        structure: dict[tuple, str] = self.get_structure(type_of_return="dict")
+        line_deque: deque[str] = deque()
+        for locator in structure:
+            locator_len = len(locator)
+            prefix_list = []
+            for i, j in enumerate(locator):
+                dummy = (*locator[0:i], j + 1)
+                match (i < locator_len - 1, bool(structure.get(dummy, None))):
+                    case (True, True):
                         prefix_list.append(stems[0])
-                    else:
+                    case (True, False):
                         prefix_list.append(stems[1])
-                dummy = (*locator[0:-1], locator[-1] + 1)
-                if structure_pritable.get(dummy, None) is not None:
-                    prefix_list.append(stems[2])
-                else:
-                    prefix_list.append(stems[3])
-                prefix = "".join(prefix_list)
-            line_index: int = structure_pritable[locator][0]
-            line: str = prefix + structure_pritable[locator][1]
-            line_with_index: tuple = (line_index, line)
-            lines_with_index.append(line_with_index)
-        lines_with_index.sort(key=lambda x: x[0])
-        lines = (i[1] for i in lines_with_index)
+                    case (False, True):
+                        prefix_list.append(stems[2])
+                    case (False, False):
+                        prefix_list.append(stems[3])
+            line: str = "".join(prefix_list) + structure[locator]
+            line_deque.append(line)
         match type_of_return.lower():
-            case "s"|"str":
-                return "\n".join(lines)
-            case "g"|"generator":
-                return lines
-            case "t"|"tuple":
-                return tuple(lines)
-            case "l"|"list":
-                return list(lines)
+            case "d" | "deque":
+                return line_deque
+            case "t" | "tuple":
+                return tuple(line_deque)
+            case "l" | "list":
+                return list(line_deque)
+            case "s" | "str":
+                return "\n".join(line_deque)
             case _:
-                return ErrorDetail("undefined type of return")
+                return ErrorInfo("undefined type of return")
 
     def export(self) -> dict:
-        menu_dict: dict = {}
-        menu_dict["title"] = self.title
-        menu_dict["attributes"] = deepcopy(self.__attributes)
-        menu_dict["sub_menus"] = []
-        for _menu_instance in self.__sub_menus:
-            sub_menu_dict = _menu_instance.export()
-            menu_dict["sub_menus"].append(sub_menu_dict)
+        cursor: list[list[dict]] = []
+        structure: deque[tuple[int, "Menu"]] = self.get_structure(False)
+        for level, menu_instance in structure:
+            _menu_dict: dict = {}
+            _menu_dict["title"] = menu_instance.title
+            _menu_dict["attributes"] = deepcopy(menu_instance.attributes)
+            _menu_dict["sub_menus"] = []
+            if level == 0:
+                cursor.append([])
+            elif level > latest_level:
+                cursor.append(cursor[-1][-1]["sub_menus"])
+            elif level == latest_level:
+                pass
+            elif level < latest_level:
+                cursor = cursor[0:level + 1]
+            cursor[-1].append(_menu_dict)
+            latest_level: int = level
+        menu_dict: dict = cursor[0][0]
         return menu_dict
 
     def __str__(self) -> str:
         return str(self.export())
 
     @type_check
-    def save_as_json(self, path: str = r"./menu.json"):
+    def save_as_json(self, path: Optional[str] = None):
         """
         Save Menu instance as json file.
 
         If file extension is missing, or not 'json', saving path will append
         suffix '.json'.
         """
+        if path is None:
+            path = "__menu__.json"
         if not path.endswith(".json"):
             path += ".json"
         with open(path, "w") as f:
@@ -344,15 +388,15 @@ class Menu:
 
     @classmethod
     @type_check
-    def load_from_json(cls, path: str = r"./menu.json") -> "Menu":
+    def load_from_json(cls, path: Optional[str] = None) -> "Menu":
         """
         Instantiate Menu instance from json file.
 
         If file extension is missing, or not 'json', loading path will append
         suffix '.json'.
         """
-        if not path.endswith(".json"):
-            path += ".json"
+        if path is None:
+            path = "__menu__.json"
         with open(path, "r") as f:
             menu_instance = cls.instantiate_from_dict(json.load(f))
         return menu_instance
